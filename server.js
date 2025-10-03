@@ -108,7 +108,7 @@ app.post('/twiml/warning', (req, res) => {
 app.post('/twiml/timeout', (req, res) => {
   console.log(`[TWIML_ENDPOINT] /twiml/timeout requested. CallSid: ${req.body.CallSid}`);
   const response = new twiml.VoiceResponse();
-  response.say({ voice: 'alice', language: 'en-US' }, 'Your time is up. Thank you for the call.');
+  response.say({ voice: 'alice', language: 'en-US' }, 'Your paid time for this call has expired. To continue the conversation, please top up your balance on our website and call back. If the expert is no longer available, please check their schedule for their next working hours. Thank you for using our service. Goodbye.');
   response.pause({length: 5});
   res.type('text/xml').send(response.toString());
 });
@@ -165,7 +165,6 @@ app.post('/twilio/incoming-call', twilioWebhook, async (req, res) => {
      if (!isCreatorAvailable(creator)) {
       console.log(`[INCOMING_CALL] Creator ${creator.name} is outside of working hours. Rejecting call.`);
       twimlResponse.say({ voice: 'alice', language: 'en-US' }, 'The person you are trying to reach is currently unavailable. Please check the schedule and try again later.');
-      twimlResponse.pause({length: 10})
       twimlResponse.hangup();
       await logWebhook('incoming_call', req, 'failed', 'Outside of business hours');
       return res.type('text/xml').send(twimlResponse.toString());
