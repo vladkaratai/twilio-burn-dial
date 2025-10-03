@@ -29,6 +29,39 @@ const activeCalls = new Map();
 const activeIntervals = new Map();
 const processedStatuses = new Map(); 
 
+
+function isCreatorAvailable(creator) {
+  if (!creator.schedule_enabled) {
+    return true;
+  }
+
+  const now = new Date();
+  
+  const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const currentDayName = dayNames[now.getDay()];
+
+  const scheduleForToday = creator.weekly_schedule ? creator.weekly_schedule[currentDayName] : null;
+
+  if (!scheduleForToday || !scheduleForToday.active) {
+    console.log(`[SCHEDULE_CHECK] Day '${currentDayName}' is not active for creator ${creator.name}.`);
+    return false;
+  }
+
+  const currentHours = now.getHours().toString().padStart(2, '0');
+  const currentMinutes = now.getMinutes().toString().padStart(2, '0');
+  const currentTime = `${currentHours}:${currentMinutes}`;
+  
+  const { start, end } = scheduleForToday;
+
+  const isAvailable = currentTime >= start && currentTime < end;
+  
+  if (!isAvailable) {
+    console.log(`[SCHEDULE_CHECK] Creator ${creator.name} is unavailable. Current time ${currentTime} is outside of ${start}-${end}.`);
+  }
+
+  return isAvailable;
+}
+
 setInterval(() => {
   const now = Date.now();
   const TTL = 2 * 60 * 60 * 1000; 
@@ -117,7 +150,7 @@ app.post('/twilio/incoming-call', twilioWebhook, async (req, res) => {
 
     const { data: creator, error: creatorErr } = await supabase
       .from('creators')
-      .select('name, phone')
+      .select('name, phone, schedule_enabled, weekly_schedule')
       .eq('id', serviceNumber.creator_id)
       .single();
 
@@ -128,6 +161,16 @@ app.post('/twilio/incoming-call', twilioWebhook, async (req, res) => {
       await logWebhook('incoming_call', req, 'failed', 'Creator not available');
       return res.type('text/xml').send(twimlResponse.toString());
     }
+
+     if (!isCreatorAvailable(creator)) {
+      console.log(`[INCOMING_CALL] Creator ${creator.name} is outside of working hours. Rejecting call.`);
+      twimlResponse.say({ voice: 'alice', language: 'en-US' }, 'The person you are trying to reach is currently unavailable. Please check the schedule and try again later.');
+      twimlResponse.pause({length: 10})
+      twimlResponse.hangup();
+      await logWebhook('incoming_call', req, 'failed', 'Outside of business hours');
+      return res.type('text/xml').send(twimlResponse.toString());
+    }
+
     console.log(`[INCOMING_CALL] Creator found: ${creator.name} (${creator.phone})`);
 
     const { data: balanceData, error: balErr } = await supabase.from('customer_balances').select('balance').eq('phone_number', from).single();
